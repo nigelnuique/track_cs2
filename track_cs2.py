@@ -3,6 +3,7 @@ import psutil
 from datetime import datetime
 import os
 import sys
+import atexit
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -18,11 +19,48 @@ except ImportError:
 
 GAME_NAME = "cs2.exe"
 SCOPES = ['https://www.googleapis.com/auth/calendar.events']
+LOCK_FILE = "cs2_tracker.lock"
 
 ENTERTAINMENT_CAL_ID = os.getenv('CALENDAR_ID')
 if not ENTERTAINMENT_CAL_ID:
     print("Warning: CALENDAR_ID not found in .env. Using 'primary' calendar.")
     ENTERTAINMENT_CAL_ID = 'primary'
+
+def check_single_instance():
+    """Check if another instance of the tracker is already running"""
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, 'r') as f:
+                pid = int(f.read().strip())
+            
+            # Check if the process is still running
+            try:
+                process = psutil.Process(pid)
+                if process.is_running() and 'track_cs2.py' in ' '.join(process.cmdline()):
+                    print(f"✗ CS2 Tracker is already running (PID: {pid})")
+                    print("Only one instance can run at a time.")
+                    return False
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                # Process doesn't exist, remove stale lock file
+                os.remove(LOCK_FILE)
+        except (ValueError, FileNotFoundError):
+            # Invalid or missing lock file, remove it
+            if os.path.exists(LOCK_FILE):
+                os.remove(LOCK_FILE)
+    
+    # Create lock file with current PID
+    with open(LOCK_FILE, 'w') as f:
+        f.write(str(os.getpid()))
+    
+    return True
+
+def cleanup_lock_file():
+    """Remove lock file when exiting"""
+    if os.path.exists(LOCK_FILE):
+        try:
+            os.remove(LOCK_FILE)
+        except OSError:
+            pass
 
 def auth_calendar():
     if not os.path.exists('credentials.json'):
@@ -74,9 +112,17 @@ def create_event(service, start, end):
         print(f"✗ Failed to log event: {e}")
 
 def track_game():
+    # Check for existing instance
+    if not check_single_instance():
+        sys.exit(1)
+    
+    # Register cleanup function
+    atexit.register(cleanup_lock_file)
+    
     print("Starting CS2 session tracker...")
     calendar_service = auth_calendar()
     print(f"✓ Authenticated. Using calendar: {ENTERTAINMENT_CAL_ID}")
+    print(f"✓ Instance lock created (PID: {os.getpid()})")
 
     cs2_active = False
     session_start = None
@@ -104,6 +150,8 @@ def track_game():
             create_event(calendar_service, session_start, session_end)
     except Exception as e:
         print(f"Unexpected error: {e}")
+    finally:
+        cleanup_lock_file()
 
 if __name__ == '__main__':
     track_game()

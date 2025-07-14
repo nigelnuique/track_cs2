@@ -3,6 +3,9 @@ credentials.json
 token.json
 .env
 
+# Runtime files
+cs2_tracker.lock
+
 # Python artifacts
 __pycache__/
 *.py[cod]
