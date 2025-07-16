@@ -102,8 +102,8 @@ def create_event(service, start, end):
     event = {
         'summary': 'CS2 Session',
         'description': 'Tracked automatically',
-        'start': {'dateTime': start.isoformat(), 'timeZone': 'Australia/Melbourne'},
-        'end': {'dateTime': end.isoformat(), 'timeZone': 'Australia/Melbourne'},
+        'start': {'dateTime': start.isoformat()},
+        'end': {'dateTime': end.isoformat()},
     }
     try:
         service.events().insert(calendarId=ENTERTAINMENT_CAL_ID, body=event).execute()
@@ -126,16 +126,25 @@ def track_game():
 
     cs2_active = False
     session_start = None
+    local_tz = datetime.now().astimezone().tzinfo
 
     try:
         while True:
-            is_running = any(p.name().lower() == GAME_NAME.lower() for p in psutil.process_iter(['name']))
+            is_running = False
+            for p in psutil.process_iter(['name']):
+                try:
+                    name = p.info['name'] or p.name()
+                    if name.lower() == GAME_NAME.lower():
+                        is_running = True
+                        break
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
             if is_running and not cs2_active:
                 cs2_active = True
-                session_start = datetime.now()
+                session_start = datetime.now(tz=local_tz)
                 print(f"▶ CS2 started at {session_start}")
             elif not is_running and cs2_active:
-                session_end = datetime.now()
+                session_end = datetime.now(tz=local_tz)
                 print(f"■ CS2 ended at {session_end}")
                 create_event(calendar_service, session_start, session_end)
                 cs2_active = False
@@ -145,7 +154,7 @@ def track_game():
     except KeyboardInterrupt:
         print("\n⛔ Tracker stopped by user.")
         if cs2_active and session_start:
-            session_end = datetime.now()
+            session_end = datetime.now(tz=local_tz)
             print(f"■ Final session ended at {session_end}")
             create_event(calendar_service, session_start, session_end)
     except Exception as e:

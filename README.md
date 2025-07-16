@@ -8,6 +8,7 @@ Automatically track your Counter-Strike 2 gaming sessions and log them to Google
 - Logs gaming sessions to Google Calendar
 - Launches CS2 through Steam
 - Runs silently in the background
+- Events are logged using your system's local timezone
 
 ## Setup
 
